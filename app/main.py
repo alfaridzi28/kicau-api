@@ -114,5 +114,6 @@ def login(user_credentials: UserLogin, db: Session = Depends(database.get_db)):
             "role": user.role,
             "rt": user.rt,
             "rw": user.rw,
+            "tanda_tangan": user.tanda_tangan,
         }
     }

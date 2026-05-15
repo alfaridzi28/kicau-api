@@ -9,31 +9,37 @@ import datetime
 
 router = APIRouter(prefix="/iuran", tags=["iuran"])
 
-@router.get("/", response_model=List[IuranResponse])
-def get_all_iuran(
-    user_id: Optional[str] = None,
-    bulan_tahun: Optional[str] = None,
+@router.get("/transaksi")
+def get_transaksi(
+    tipe: Optional[str] = None,
+    rt: Optional[str] = None,
+    rw: Optional[str] = None,
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    query = db.query(models.Keuangan).filter(models.Keuangan.tipe == "iuran")
-    if user_id:
-        query = query.filter(models.Keuangan.user_id == user_id)
-    if bulan_tahun:
-        query = query.filter(models.Keuangan.bulan_tahun == bulan_tahun)
-    return query.all()
+    query = db.query(models.Keuangan)
+    
+    if current_user.role == "rt":
+        query = query.join(models.User, models.Keuangan.user_id == models.User.id).filter(models.User.rt == current_user.rt, models.User.rw == current_user.rw)
+    elif current_user.role == "rw":
+        query = query.join(models.User, models.Keuangan.user_id == models.User.id).filter(models.User.rw == current_user.rw)
+    
+    if tipe:
+        query = query.filter(models.Keuangan.tipe == tipe)
+        
+    return query.order_by(models.Keuangan.created_at.desc()).all()
 
-@router.post("/", response_model=IuranResponse)
-def create_iuran(iuran: IuranCreate, db: Session = Depends(database.get_db), current_user: models.User = Depends(get_current_user)):
-    new_iuran = models.Keuangan(
-        tipe="iuran",
-        kategori="Iuran Warga",
-        **iuran.model_dump()
+@router.post("/")
+def create_transaksi(data: dict, db: Session = Depends(database.get_db), current_user: models.User = Depends(get_current_user)):
+    # Tipe: pemasukan, pengeluaran, iuran
+    new_t = models.Keuangan(
+        **data,
+        rt_id=current_user.id # Penanggung jawab transaksi
     )
-    db.add(new_iuran)
+    db.add(new_t)
     db.commit()
-    db.refresh(new_iuran)
-    return new_iuran
+    db.refresh(new_t)
+    return new_t
 
 @router.get("/status/{user_id}")
 def get_iuran_status(user_id: str, db: Session = Depends(database.get_db), current_user: models.User = Depends(get_current_user)):
@@ -128,35 +134,34 @@ def get_rekap_rw(
 
 @router.get("/rekap-rt")
 def get_rekap_rt(
-    rt: str = None,
-    rw: str = None,
+    rt: str = Query(...),
+    rw: str = Query(...),
     bulan_tahun: Optional[str] = None,
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    if not rt and current_user.role == "rt":
-        rt = current_user.rt
-    if not rw and current_user.role in ["rt", "rw"]:
-        rw = current_user.rw
-        
+    # Validasi akses
+    if current_user.role not in ["superadmin", "lurah"]:
+        if current_user.role == "rw" and str(current_user.rw).strip() != str(rw).strip():
+            raise HTTPException(status_code=403, detail="Anda tidak memiliki akses ke RW ini")
+            
     if not bulan_tahun:
         bulan_tahun = datetime.datetime.now().strftime("%Y-%m")
         
-    # Get all warga in RT
+    # Ambil SEMUA orang di wilayah tersebut (kecuali superadmin)
     warga_list = db.query(models.User).filter(
-        models.User.rt == rt, 
-        models.User.rw == rw, 
-        models.User.role == "warga"
+        func.trim(models.User.rt) == rt.strip(), 
+        func.trim(models.User.rw) == rw.strip(),
+        models.User.role != "superadmin"
     ).all()
     
     # Get paid records
     paid_records = db.query(models.Keuangan).filter(
-        models.Keuangan.rt_id == current_user.id if current_user.role == "rt" else None, # This might be tricky
         models.Keuangan.tipe == "iuran",
         models.Keuangan.bulan_tahun == bulan_tahun
     ).join(models.User, models.Keuangan.user_id == models.User.id).filter(
-        models.User.rt == rt,
-        models.User.rw == rw
+        func.trim(models.User.rt) == rt.strip(),
+        func.trim(models.User.rw) == rw.strip()
     ).all()
     
     paid_ids = [r.user_id for r in paid_records]
@@ -168,29 +173,82 @@ def get_rekap_rt(
             "id": w.id,
             "nama": w.nama,
             "nik": w.nik,
+            "role": w.role,
             "status": "Lunas" if is_paid else "Belum Bayar",
             "nominal": next((r.nominal for r in paid_records if r.user_id == w.id), 0)
         })
         
     return {"rt": rt, "rw": rw, "bulan_tahun": bulan_tahun, "data": data}
 
+@router.get("/rt-to-rw-status")
+def get_rt_to_rw_status(
+    bulan_tahun: Optional[str] = None,
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    if current_user.role not in ["rw", "lurah", "superadmin"]:
+        raise HTTPException(status_code=403, detail="Akses ditolak")
+    
+    if not bulan_tahun:
+        bulan_tahun = datetime.datetime.now().strftime("%Y-%m")
+        
+    rw = current_user.rw
+    query_rt = db.query(models.User.rt).filter(models.User.rw == rw).distinct().all()
+    rts = [r[0] for r in query_rt if r[0]]
+    
+    rekap = []
+    for rt_num in rts:
+        rt_chair = db.query(models.User).filter(models.User.rt == rt_num, models.User.rw == rw, models.User.role == "rt").first()
+        
+        is_paid = False
+        if rt_chair:
+            is_paid = db.query(models.Keuangan).filter(
+                models.Keuangan.user_id == rt_chair.id,
+                models.Keuangan.kategori == "Kas RW",
+                models.Keuangan.bulan_tahun == bulan_tahun
+            ).first() is not None
+
+        total_jiwa = db.query(models.User).filter(models.User.rt == rt_num, models.User.rw == rw).count()
+        sudah_bayar = db.query(models.User).join(models.Keuangan, models.Keuangan.user_id == models.User.id).filter(
+            models.User.rt == rt_num,
+            models.User.rw == rw,
+            models.Keuangan.tipe == "iuran",
+            models.Keuangan.bulan_tahun == bulan_tahun
+        ).count()
+
+        rekap.append({
+            "rt": rt_num,
+            "rt_chair_id": rt_chair.id if rt_chair else None,
+            "status_kas_rw": "Lunas" if is_paid else "Belum Setor",
+            "performa_warga": {
+                "total": total_jiwa,
+                "sudah": sudah_bayar,
+                "belum": total_jiwa - sudah_bayar,
+                "persen": (sudah_bayar / total_jiwa * 100) if total_jiwa > 0 else 0
+            }
+        })
+        
+    return rekap
+
 @router.get("/unpaid")
-def get_unpaid_warga(rt: str = None, rw: str = None, db: Session = Depends(database.get_db), current_user: models.User = Depends(get_current_user)):
-    # Role check
+def get_unpaid_warga(
+    rt: Optional[str] = None, 
+    rw: Optional[str] = None, 
+    bulan_tahun: Optional[str] = None,
+    db: Session = Depends(database.get_db), 
+    current_user: models.User = Depends(get_current_user)
+):
     if current_user.role == "warga":
         raise HTTPException(status_code=403, detail="Akses ditolak")
         
-    now = datetime.datetime.now()
-    bulan_tahun = now.strftime("%Y-%m")
+    if not bulan_tahun:
+        bulan_tahun = datetime.datetime.now().strftime("%Y-%m")
     
-    # If RT/RW not provided, use from current_user if applicable
     if not rw and current_user.role == "rw":
         rw = current_user.rw
-    if not rt and current_user.role == "rt":
-        rt = current_user.rt
-        rw = current_user.rw
         
-    query = db.query(models.User).filter(models.User.role == "warga")
+    # Ambil SEMUA orang di wilayah tersebut tanpa melihat role
+    query = db.query(models.User)
     if rt:
         query = query.filter(models.User.rt == rt)
     if rw:
@@ -198,7 +256,7 @@ def get_unpaid_warga(rt: str = None, rw: str = None, db: Session = Depends(datab
         
     all_warga = query.all()
     
-    # Get paid user IDs
+    # Get paid user IDs for this specific month
     paid_user_ids = db.query(models.Keuangan.user_id).filter(
         models.Keuangan.tipe == "iuran",
         models.Keuangan.bulan_tahun == bulan_tahun

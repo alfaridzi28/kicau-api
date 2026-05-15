@@ -10,6 +10,8 @@ def get_surat(
     status: str = None,
     rt: str = None,
     rw: str = None,
+    skip: int = 0,
+    limit: int = 20,
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(get_current_user)
 ):
@@ -21,7 +23,6 @@ def get_surat(
         query = query.filter(models.User.rt == current_user.rt)
     elif current_user.role == "rw":
         query = query.filter(models.User.rw == current_user.rw)
-    # Lurah and superadmin can see all, but filtered by params
     
     if status:
         query = query.filter(models.SuratPengantar.status == status)
@@ -30,7 +31,15 @@ def get_surat(
     if rw:
         query = query.filter(models.User.rw == rw)
         
-    return query.order_by(models.SuratPengantar.created_at.desc()).all()
+    total = query.count()
+    items = query.order_by(models.SuratPengantar.created_at.desc()).offset(skip).limit(limit).all()
+            
+    return {
+        "total": total,
+        "items": items,
+        "skip": skip,
+        "limit": limit
+    }
 
 @router.post("/")
 def create_surat(data: dict, db: Session = Depends(database.get_db), current_user: models.User = Depends(get_current_user)):

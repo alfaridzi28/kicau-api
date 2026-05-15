@@ -2,15 +2,17 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from app import database, models
-from app.schemas import WargaCreate, WargaUpdate, WargaResponse
+from app.schemas import WargaCreate, WargaUpdate, WargaResponse, WargaPagination
 from app.core.security import get_current_user, get_password_hash
 
 router = APIRouter(prefix="/warga", tags=["warga"])
 
-@router.get("/", response_model=List[WargaResponse])
+@router.get("/", response_model=WargaPagination)
 def get_all_warga(
     rt: Optional[str] = None,
     rw: Optional[str] = None,
+    skip: int = 0,
+    limit: int = 20,
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(get_current_user)
 ):
@@ -19,7 +21,16 @@ def get_all_warga(
         query = query.filter(models.User.rt == rt)
     if rw:
         query = query.filter(models.User.rw == rw)
-    return query.all()
+    
+    total = query.count()
+    items = query.offset(skip).limit(limit).all()
+    
+    return {
+        "total": total,
+        "items": items,
+        "skip": skip,
+        "limit": limit
+    }
 
 @router.get("/{warga_id}", response_model=WargaResponse)
 def get_warga(warga_id: str, db: Session = Depends(database.get_db), current_user: models.User = Depends(get_current_user)):
@@ -49,6 +60,17 @@ def update_warga(warga_id: str, warga_update: WargaUpdate, db: Session = Depends
     db_user = db.query(models.User).filter(models.User.id == warga_id).first()
     if not db_user:
         raise HTTPException(status_code=404, detail="Warga tidak ditemukan")
+
+    # Access Control: Hanya diri sendiri, RW (untuk warganya), Lurah, atau Superadmin
+    can_edit = (
+        current_user.id == db_user.id or 
+        current_user.role == 'superadmin' or 
+        current_user.role == 'lurah' or
+        (current_user.role == 'rw' and current_user.rw == db_user.rw)
+    )
+    
+    if not can_edit:
+        raise HTTPException(status_code=403, detail="Tidak memiliki akses untuk mengubah data ini")
     
     update_data = warga_update.model_dump(exclude_unset=True)
     

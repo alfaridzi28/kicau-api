@@ -22,13 +22,13 @@ class User(Base):
     longitude = Column(Float, nullable=True)
     
     foto = Column(String(500), nullable=True)
+    tanda_tangan = Column(Text, nullable=True)
     rt = Column(String(10), nullable=True)
     rw = Column(String(10), nullable=True)
     desa_kelurahan = Column(String(100), nullable=True)
     kecamatan = Column(String(100), nullable=True)
-    kabupaten = Column(String(100), nullable=True)
-    
     role = Column(String(50), default="warga")
+    jabatan = Column(String(100), default="Warga") # Ketua, Sekretaris, Bendahara, Staff, Warga
     is_active = Column(Boolean, default=True)
     
     # Kategori Bansos / Kondisi Khusus

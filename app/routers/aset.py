@@ -10,6 +10,9 @@ def get_aset(
     kepemilikan: str = None, 
     rt: str = None, 
     rw: str = None, 
+    search: str = None,
+    skip: int = 0,
+    limit: int = 20,
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(get_current_user)
 ):
@@ -17,6 +20,9 @@ def get_aset(
     
     if kepemilikan:
         query = query.filter(models.Aset.kepemilikan == kepemilikan)
+        
+    if search:
+        query = query.filter(models.Aset.nama_aset.ilike(f"%{search}%"))
         
     # Filter based on RT/RW of the owner
     if rt or rw:
@@ -26,7 +32,15 @@ def get_aset(
         if rw:
             query = query.filter(models.User.rw == rw)
             
-    return query.all()
+    total = query.count()
+    items = query.order_by(models.Aset.created_at.desc()).offset(skip).limit(limit).all()
+            
+    return {
+        "total": total,
+        "items": items,
+        "skip": skip,
+        "limit": limit
+    }
 
 @router.post("/")
 def create_aset(data: dict, db: Session = Depends(database.get_db), current_user: models.User = Depends(get_current_user)):

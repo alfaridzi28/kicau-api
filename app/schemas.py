@@ -14,6 +14,9 @@ class UserInfo(BaseModel):
     rt: Optional[str] = None
     rw: Optional[str] = None
     no_telp: Optional[str] = None
+    jabatan: Optional[str] = "Warga"
+    effective_role: Optional[str] = None
+    tanda_tangan: Optional[str] = None
 
 class Token(BaseModel):
     access_token: str
@@ -43,10 +46,12 @@ class WargaCreate(BaseModel):
     kecamatan: Optional[str] = None
     kabupaten: Optional[str] = None
     role: Optional[str] = "warga"
+    jabatan: Optional[str] = "Warga"
     is_fakir: Optional[bool] = False
     is_miskin: Optional[bool] = False
     is_ibu_hamil: Optional[bool] = False
     is_balita: Optional[bool] = False
+    tanda_tangan: Optional[str] = None
 
 class WargaUpdate(BaseModel):
     nomor_kk: Optional[str] = None
@@ -62,10 +67,12 @@ class WargaUpdate(BaseModel):
     kecamatan: Optional[str] = None
     kabupaten: Optional[str] = None
     role: Optional[str] = None
+    jabatan: Optional[str] = None
     is_fakir: Optional[bool] = None
     is_miskin: Optional[bool] = None
     is_ibu_hamil: Optional[bool] = None
     is_balita: Optional[bool] = None
+    tanda_tangan: Optional[str] = None
 
 class WargaResponse(BaseModel):
     id: str
@@ -83,12 +90,23 @@ class WargaResponse(BaseModel):
     kecamatan: Optional[str] = None
     kabupaten: Optional[str] = None
     role: str
-    is_active: bool = True          # ← tambahan: status aktif akun
-    is_fakir: bool
-    is_miskin: bool
-    is_ibu_hamil: bool
-    is_balita: bool
+    jabatan: str
+    is_active: bool = True
+    is_fakir: Optional[bool] = False
+    is_miskin: Optional[bool] = False
+    is_ibu_hamil: Optional[bool] = False
+    is_balita: Optional[bool] = False
+    tanda_tangan: Optional[str] = None
     created_at: Optional[datetime.datetime] = None
+
+    class Config:
+        from_attributes = True
+
+class WargaPagination(BaseModel):
+    total: int
+    items: List[WargaResponse]
+    skip: int
+    limit: int
 
     class Config:
         from_attributes = True

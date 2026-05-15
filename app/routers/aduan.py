@@ -50,8 +50,24 @@ def update_aduan_status(aduan_id: str, data: dict, db: Session = Depends(databas
     if not aduan:
         raise HTTPException(status_code=404, detail="Aduan tidak ditemukan")
     
+    # Ambil data pelapor untuk notifikasi
+    pelapor = db.query(models.User).filter(models.User.id == aduan.user_id).first()
+
     for key, value in data.items():
         setattr(aduan, key, value)
+    
+    # Jika yang menjawab adalah RW, kirim notifikasi ke Ketua RT pelapor
+    if current_user.role == "rw" and "balasan" in data:
+        if pelapor and pelapor.rt:
+            new_notif = models.Pemberitahuan(
+                judul="🔔 Tindak Lanjut Aduan Warga oleh RW",
+                isi=f"Ketua RW telah menanggapi aduan dari warga Anda ({pelapor.nama}). Silakan cek manajemen aduan untuk koordinasi lebih lanjut.",
+                target_rt=pelapor.rt,
+                target_rw=pelapor.rw,
+                is_publik=False, # Hanya untuk pengurus/internal
+                created_by=current_user.id
+            )
+            db.add(new_notif)
         
     db.commit()
     db.refresh(aduan)
