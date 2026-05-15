@@ -13,6 +13,12 @@ MIGRATIONS = [
     # Users table
     ("users.is_active",
      "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE"),
+    ("users.desa_kelurahan",
+     "ALTER TABLE users ADD COLUMN IF NOT EXISTS desa_kelurahan VARCHAR(100)"),
+    ("users.kecamatan",
+     "ALTER TABLE users ADD COLUMN IF NOT EXISTS kecamatan VARCHAR(100)"),
+    ("users.kabupaten",
+     "ALTER TABLE users ADD COLUMN IF NOT EXISTS kabupaten VARCHAR(100)"),
 
     # Pemberitahuan table
     ("CREATE pemberitahuan", """
@@ -49,6 +55,10 @@ MIGRATIONS = [
      "ALTER TABLE aset ADD COLUMN IF NOT EXISTS foto VARCHAR(500)"),
     ("aset.deskripsi",
      "ALTER TABLE aset ADD COLUMN IF NOT EXISTS deskripsi TEXT"),
+    ("aset.rt",
+     "ALTER TABLE aset ADD COLUMN IF NOT EXISTS rt VARCHAR(10)"),
+    ("aset.rw",
+     "ALTER TABLE aset ADD COLUMN IF NOT EXISTS rw VARCHAR(10)"),
 
     # Aduan: lokasi, foto bukti/selesai, balasan, rt_id
     ("aduan.latitude",

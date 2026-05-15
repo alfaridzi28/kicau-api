@@ -11,9 +11,9 @@ class UserInfo(BaseModel):
     id: str
     nama: str
     nik: str
-    role: str
     rt: Optional[str] = None
     rw: Optional[str] = None
+    no_telp: Optional[str] = None
 
 class Token(BaseModel):
     access_token: str
@@ -33,6 +33,7 @@ class WargaCreate(BaseModel):
     nama: str
     password: Optional[str] = None
     alamat: Optional[str] = None
+    no_telp: Optional[str] = None
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     foto: Optional[str] = None
@@ -51,6 +52,7 @@ class WargaUpdate(BaseModel):
     nomor_kk: Optional[str] = None
     nama: Optional[str] = None
     alamat: Optional[str] = None
+    no_telp: Optional[str] = None
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     foto: Optional[str] = None
@@ -71,6 +73,7 @@ class WargaResponse(BaseModel):
     nik: Optional[str] = None
     nama: str
     alamat: Optional[str] = None
+    no_telp: Optional[str] = None
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     foto: Optional[str] = None

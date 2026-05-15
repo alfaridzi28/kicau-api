@@ -14,6 +14,7 @@ class User(Base):
     nama = Column(String(255), nullable=False)
     password = Column(String(255), nullable=True)
     alamat = Column(Text, nullable=True)
+    no_telp = Column(String(20), nullable=True)
     
     # Lokasi spasial (Point PostGIS) untuk Geospatial
     lokasi = Column(Geometry(geometry_type='POINT', srid=4326), nullable=True)
@@ -129,6 +130,8 @@ class Aset(Base):
     status = Column(String(50), default="tersedia")     # tersedia, dipinjam, tidak_layak
     kepemilikan = Column(String(50), nullable=False)    # aset_rw, aset_rt
     pemilik_id = Column(String(36), ForeignKey('users.id'))
+    rt = Column(String(10), nullable=True)
+    rw = Column(String(10), nullable=True)
     created_at = Column(TIMESTAMP, default=datetime.datetime.utcnow)
 
 class PeminjamanAset(Base):
