@@ -16,12 +16,29 @@ def is_empty_or_none(col):
 def get_pemberitahuan_publik(
     rt: Optional[str] = None,
     rw: Optional[str] = None,
+    lat: Optional[float] = None,
+    lng: Optional[float] = None,
     limit: int = 6,
     db: Session = Depends(database.get_db)
 ):
+    from sqlalchemy import func
+    
+    if lat is not None and lng is not None:
+        matched_wilayah = db.query(models.Wilayah).filter(
+            func.ST_Contains(
+                models.Wilayah.polygon, 
+                func.ST_SetSRID(func.ST_MakePoint(lng, lat), 4326)
+            )
+        ).first()
+        if matched_wilayah:
+            if not rt and matched_wilayah.rt:
+                rt = matched_wilayah.rt
+            if not rw and matched_wilayah.rw:
+                rw = matched_wilayah.rw
+
     query = db.query(models.Pemberitahuan).filter(models.Pemberitahuan.is_publik == True)
     
-    if rt and rw:
+    if rw:
         query = query.filter(
             or_(
                 # Admin/Lurah global news (None or empty string)
@@ -37,7 +54,7 @@ def get_pemberitahuan_publik(
         query = query.filter((is_empty_or_none(models.Pemberitahuan.target_rw)) & (is_empty_or_none(models.Pemberitahuan.target_rt)))
     
     return {
-        "detected_region": {"rt": rt, "rw": rw} if rt else None,
+        "detected_region": {"rt": rt, "rw": rw} if (rt or rw) else None,
         "pemberitahuan": query.order_by(models.Pemberitahuan.created_at.desc()).limit(limit).all()
     }
 

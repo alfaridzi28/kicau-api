@@ -154,3 +154,11 @@ class PeminjamanAset(Base):
     catatan = Column(Text, nullable=True)
     created_at = Column(TIMESTAMP, default=datetime.datetime.utcnow)
 
+class Wilayah(Base):
+    __tablename__ = "wilayah"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    rt = Column(String(10), nullable=True)
+    rw = Column(String(10), nullable=True)
+    polygon = Column(Geometry(geometry_type='POLYGON', srid=4326), nullable=False)
+    created_at = Column(TIMESTAMP, default=datetime.datetime.utcnow)
