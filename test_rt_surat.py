@@ -1,6 +1,6 @@
 import requests
 
-base_url = 'http://localhost:8000'
+base_url = 'http://127.0.0.1:8000'
 
 # Login as RT
 login_data = {
@@ -18,7 +18,6 @@ headers = {
     "Content-Type": "application/json"
 }
 
-# Fetch surat
 r = requests.get(f"{base_url}/surat?status=pending&limit=10", headers=headers)
 if r.status_code != 200:
     print("Fetch surat failed:", r.status_code, r.text)
@@ -26,8 +25,6 @@ if r.status_code != 200:
 
 surat_list = r.json().get('items', [])
 if not surat_list:
-    print("No pending surat found for this RT.")
-    # Create one to test!
     surat_data = {
         "kategori": "ktp",
         "keterangan": "Test surat"
@@ -42,7 +39,7 @@ print("Approving surat_id:", surat_id)
 # Approve surat
 patch_data = {
     "status": "approved",
-    "file_ttd_digital": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+    "file_ttd_digital": "data:image/png;base64,123",
     "catatan": "Okelah"
 }
 r = requests.patch(f"{base_url}/surat/{surat_id}", json=patch_data, headers=headers)
