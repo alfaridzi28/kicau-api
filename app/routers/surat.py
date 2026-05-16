@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Body
 from sqlalchemy.orm import Session
 from app import database, models
 from app.core.security import get_current_user
@@ -42,7 +42,7 @@ def get_surat(
     }
 
 @router.post("/")
-def create_surat(data: dict, db: Session = Depends(database.get_db), current_user: models.User = Depends(get_current_user)):
+def create_surat(data: dict = Body(...), db: Session = Depends(database.get_db), current_user: models.User = Depends(get_current_user)):
     new_s = models.SuratPengantar(**data, user_id=current_user.id)
     db.add(new_s)
     db.commit()
@@ -50,7 +50,7 @@ def create_surat(data: dict, db: Session = Depends(database.get_db), current_use
     return new_s
 
 @router.patch("/{surat_id}")
-def update_surat_status(surat_id: str, data: dict, db: Session = Depends(database.get_db), current_user: models.User = Depends(get_current_user)):
+def update_surat_status(surat_id: str, data: dict = Body(...), db: Session = Depends(database.get_db), current_user: models.User = Depends(get_current_user)):
     s = db.query(models.SuratPengantar).filter(models.SuratPengantar.id == surat_id).first()
     if not s:
         raise HTTPException(status_code=404, detail="Surat tidak ditemukan")

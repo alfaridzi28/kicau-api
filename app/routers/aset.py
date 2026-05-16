@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Body
 from sqlalchemy.orm import Session
 from app import database, models
 from app.core.security import get_current_user
@@ -73,7 +73,7 @@ def get_aset(
     }
 
 @router.post("/")
-def create_aset(data: dict, db: Session = Depends(database.get_db), current_user: models.User = Depends(get_current_user)):
+def create_aset(data: dict = Body(...), db: Session = Depends(database.get_db), current_user: models.User = Depends(get_current_user)):
     new_a = models.Aset(
         **data,
         pemilik_id=current_user.id
