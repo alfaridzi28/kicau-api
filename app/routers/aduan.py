@@ -1,11 +1,18 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from typing import List, Optional
+from sqlalchemy import cast, Integer
+from typing import Optional
 from app import database, models
 from app.core.security import get_current_user
-import datetime
 
 router = APIRouter(prefix="/aduan", tags=["aduan"])
+
+def _normalize_int(val: str) -> Optional[int]:
+    """Safely convert an RT/RW string to integer for DB casting."""
+    try:
+        return int(str(val).strip())
+    except (ValueError, TypeError):
+        return None
 
 @router.get("/")
 def get_all_aduan(
@@ -16,20 +23,36 @@ def get_all_aduan(
     current_user: models.User = Depends(get_current_user)
 ):
     query = db.query(models.Aduan).join(models.User, models.Aduan.user_id == models.User.id)
-    
+
+    # --- Role-based automatic filtering ---
+    role = current_user.role
+    if role == "rt":
+        rt_int = _normalize_int(current_user.rt)
+        rw_int = _normalize_int(current_user.rw)
+        if rt_int and rw_int:
+            query = query.filter(cast(models.User.rt, Integer) == rt_int, cast(models.User.rw, Integer) == rw_int)
+        else:
+            query = query.filter(models.User.rt == current_user.rt, models.User.rw == current_user.rw)
+    elif role == "rw":
+        rw_int = _normalize_int(current_user.rw)
+        if rw_int:
+            query = query.filter(cast(models.User.rw, Integer) == rw_int)
+        else:
+            query = query.filter(models.User.rw == current_user.rw)
+    elif role == "warga":
+        query = query.filter(models.Aduan.user_id == current_user.id)
+
+    # --- Optional query-param overrides (Lurah / Superadmin only) ---
+    HIGH_ROLES = {"lurah", "superadmin", "camat", "bupati"}
+    if role in HIGH_ROLES:
+        if rt:
+            query = query.filter(models.User.rt == rt)
+        if rw:
+            query = query.filter(models.User.rw == rw)
+
     if status:
         query = query.filter(models.Aduan.status == status)
-    
-    if rt:
-        query = query.filter(models.User.rt == rt)
-    
-    if rw:
-        query = query.filter(models.User.rw == rw)
-    
-    # If user is not admin/rt/rw, only show their own aduan
-    if current_user.role == "warga":
-        query = query.filter(models.Aduan.user_id == current_user.id)
-        
+
     return query.order_by(models.Aduan.created_at.desc()).all()
 
 @router.post("/")

@@ -11,6 +11,7 @@ class UserInfo(BaseModel):
     id: str
     nama: str
     nik: str
+    role: str
     rt: Optional[str] = None
     rw: Optional[str] = None
     no_telp: Optional[str] = None

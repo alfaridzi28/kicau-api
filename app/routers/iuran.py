@@ -9,25 +9,111 @@ import datetime
 
 router = APIRouter(prefix="/iuran", tags=["iuran"])
 
+@router.get("/")
+def get_user_iuran(
+    user_id: Optional[str] = None,
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    # Only allow users to see their own data, unless they are staff/admin
+    target_id = user_id or current_user.id
+    if current_user.role == "warga" and target_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Akses ditolak")
+        
+    query = db.query(models.Keuangan).filter(models.Keuangan.user_id == target_id)
+    return query.order_by(models.Keuangan.created_at.desc()).all()
+
 @router.get("/transaksi")
 def get_transaksi(
     tipe: Optional[str] = None,
     rt: Optional[str] = None,
     rw: Optional[str] = None,
+    bulan_tahun: Optional[str] = None,
+    skip: int = 0,
+    limit: int = 50,
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(get_current_user)
 ):
     query = db.query(models.Keuangan)
     
+    # Hitung total untuk pagination
+    total_query = db.query(func.count(models.Keuangan.id))
+    
+    # Filter Berdasarkan Peran
     if current_user.role == "rt":
-        query = query.join(models.User, models.Keuangan.user_id == models.User.id).filter(models.User.rt == current_user.rt, models.User.rw == current_user.rw)
+        try:
+            from sqlalchemy import cast, Integer
+            rt_val = int(str(current_user.rt).strip())
+            rw_val = int(str(current_user.rw).strip())
+            # Join untuk filter wilayah
+            query = query.join(models.User, models.Keuangan.user_id == models.User.id).filter(
+                cast(models.User.rt, Integer) == rt_val, 
+                cast(models.User.rw, Integer) == rw_val
+            )
+            total_query = total_query.join(models.User, models.Keuangan.user_id == models.User.id).filter(
+                cast(models.User.rt, Integer) == rt_val, 
+                cast(models.User.rw, Integer) == rw_val
+            )
+        except:
+            query = query.join(models.User, models.Keuangan.user_id == models.User.id).filter(
+                models.User.rt == current_user.rt, 
+                models.User.rw == current_user.rw
+            )
+            total_query = total_query.join(models.User, models.Keuangan.user_id == models.User.id).filter(
+                models.User.rt == current_user.rt, 
+                models.User.rw == current_user.rw
+            )
     elif current_user.role == "rw":
-        query = query.join(models.User, models.Keuangan.user_id == models.User.id).filter(models.User.rw == current_user.rw)
+        try:
+            from sqlalchemy import cast, Integer
+            rw_val = int(str(current_user.rw).strip())
+            query = query.join(models.User, models.Keuangan.user_id == models.User.id).filter(
+                cast(models.User.rw, Integer) == rw_val
+            )
+            total_query = total_query.join(models.User, models.Keuangan.user_id == models.User.id).filter(
+                cast(models.User.rw, Integer) == rw_val
+            )
+        except:
+            query = query.join(models.User, models.Keuangan.user_id == models.User.id).filter(
+                models.User.rw == current_user.rw
+            )
+            total_query = total_query.join(models.User, models.Keuangan.user_id == models.User.id).filter(
+                models.User.rw == current_user.rw
+            )
     
     if tipe:
         query = query.filter(models.Keuangan.tipe == tipe)
+        total_query = total_query.filter(models.Keuangan.tipe == tipe)
         
-    return query.order_by(models.Keuangan.created_at.desc()).all()
+    if bulan_tahun:
+        if len(bulan_tahun) == 4:
+            query = query.filter(models.Keuangan.bulan_tahun.like(f"{bulan_tahun}-%"))
+            total_query = total_query.filter(models.Keuangan.bulan_tahun.like(f"{bulan_tahun}-%"))
+        else:
+            query = query.filter(models.Keuangan.bulan_tahun == bulan_tahun)
+            total_query = total_query.filter(models.Keuangan.bulan_tahun == bulan_tahun)
+            
+    total = total_query.scalar()
+    
+    # Hitung Sum Nominal (Sesuaikan dengan filter yang ada)
+    sum_pemasukan = db.query(func.sum(models.Keuangan.nominal)).filter(
+        models.Keuangan.id.in_(query.with_entities(models.Keuangan.id))
+    ).filter(models.Keuangan.tipe.in_(['pemasukan', 'iuran'])).scalar() or 0
+    
+    sum_pengeluaran = db.query(func.sum(models.Keuangan.nominal)).filter(
+        models.Keuangan.id.in_(query.with_entities(models.Keuangan.id))
+    ).filter(models.Keuangan.tipe == 'pengeluaran').scalar() or 0
+
+    items = query.order_by(models.Keuangan.created_at.desc()).offset(skip).limit(limit).all()
+    
+    return {
+        "total": total,
+        "items": items,
+        "sum_pemasukan": sum_pemasukan,
+        "sum_pengeluaran": sum_pengeluaran,
+        "skip": skip,
+        "limit": limit
+    }
 
 @router.post("/")
 def create_transaksi(data: dict, db: Session = Depends(database.get_db), current_user: models.User = Depends(get_current_user)):
@@ -248,11 +334,20 @@ def get_unpaid_warga(
         rw = current_user.rw
         
     # Ambil SEMUA orang di wilayah tersebut tanpa melihat role
+    from sqlalchemy import cast, Integer
     query = db.query(models.User)
     if rt:
-        query = query.filter(models.User.rt == rt)
+        try:
+            rt_val = int(str(rt).strip())
+            query = query.filter(cast(models.User.rt, Integer) == rt_val)
+        except:
+            query = query.filter(models.User.rt == rt)
     if rw:
-        query = query.filter(models.User.rw == rw)
+        try:
+            rw_val = int(str(rw).strip())
+            query = query.filter(cast(models.User.rw, Integer) == rw_val)
+        except:
+            query = query.filter(models.User.rw == rw)
         
     all_warga = query.all()
     

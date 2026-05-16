@@ -21,7 +21,7 @@ class User(Base):
     latitude = Column(Float, nullable=True)
     longitude = Column(Float, nullable=True)
     
-    foto = Column(String(500), nullable=True)
+    foto = Column(Text, nullable=True)
     tanda_tangan = Column(Text, nullable=True)
     rt = Column(String(10), nullable=True)
     rw = Column(String(10), nullable=True)
@@ -56,7 +56,7 @@ class Pemberitahuan(Base):
     id = Column(Integer, primary_key=True, index=True)
     judul = Column(String(255), nullable=False)
     isi = Column(Text, nullable=False)
-    foto = Column(String(500), nullable=True)
+    foto = Column(Text, nullable=True)
     target_rt = Column(String(10), nullable=True)
     target_rw = Column(String(10), nullable=True)
     is_publik = Column(Boolean, default=True)  # Tampil di dashboard publik
@@ -84,8 +84,8 @@ class Aduan(Base):
     judul = Column(String(255), nullable=False)
     isi = Column(Text, nullable=False)
     status = Column(String(50), default="belum_dibaca")  # belum_dibaca, diproses, selesai
-    foto_bukti = Column(String(500), nullable=True)       # Foto aduan dari warga
-    foto_selesai = Column(String(500), nullable=True)     # Foto bukti selesai dari RT/RW
+    foto_bukti = Column(Text, nullable=True)       # Foto aduan dari warga
+    foto_selesai = Column(Text, nullable=True)     # Foto bukti selesai dari RT/RW
     latitude = Column(Float, nullable=True)               # Lokasi kejadian
     longitude = Column(Float, nullable=True)
     user_id = Column(String(36), ForeignKey('users.id'))
@@ -126,7 +126,7 @@ class Aset(Base):
     nama_aset = Column(String(255), nullable=False)
     deskripsi = Column(Text, nullable=True)
     jumlah = Column(Integer, default=1)
-    foto = Column(String(500), nullable=True)           # URL foto aset
+    foto = Column(Text, nullable=True)           # URL foto aset
     status = Column(String(50), default="tersedia")     # tersedia, dipinjam, tidak_layak
     kepemilikan = Column(String(50), nullable=False)    # aset_rw, aset_rt
     pemilik_id = Column(String(36), ForeignKey('users.id'))

@@ -83,12 +83,7 @@ def login(user_credentials: UserLogin, db: Session = Depends(database.get_db)):
             detail="Akun Anda telah dinonaktifkan. Hubungi superadmin.",
         )
 
-    password_valid = False
-    if user.password:
-        try:
-            password_valid = verify_password(user_credentials.password, user.password)
-        except Exception:
-            password_valid = (user_credentials.password == user.password)
+    password_valid = verify_password(user_credentials.password, user.password)
 
     if not password_valid:
         raise HTTPException(
@@ -114,6 +109,7 @@ def login(user_credentials: UserLogin, db: Session = Depends(database.get_db)):
             "role": user.role,
             "rt": user.rt,
             "rw": user.rw,
+            "jabatan": user.jabatan,
             "tanda_tangan": user.tanda_tangan,
         }
     }

@@ -11,16 +11,56 @@ router = APIRouter(prefix="/warga", tags=["warga"])
 def get_all_warga(
     rt: Optional[str] = None,
     rw: Optional[str] = None,
+    search: Optional[str] = None,
+    bansos: Optional[bool] = None,
+    is_fakir: Optional[bool] = None,
+    is_miskin: Optional[bool] = None,
+    is_ibu_hamil: Optional[bool] = None,
+    is_balita: Optional[bool] = None,
+    role: Optional[str] = None,
     skip: int = 0,
     limit: int = 20,
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(get_current_user)
 ):
     query = db.query(models.User)
+    if role:
+        query = query.filter(models.User.role == role)
+    from sqlalchemy import cast, Integer
     if rt:
-        query = query.filter(models.User.rt == rt)
+        try:
+            rt_val = int(str(rt).strip())
+            query = query.filter(cast(models.User.rt, Integer) == rt_val)
+        except:
+            query = query.filter(models.User.rt == rt)
     if rw:
-        query = query.filter(models.User.rw == rw)
+        try:
+            rw_val = int(str(rw).strip())
+            query = query.filter(cast(models.User.rw, Integer) == rw_val)
+        except:
+            query = query.filter(models.User.rw == rw)
+    if search:
+        query = query.filter(
+            (models.User.nama.ilike(f"%{search}%")) | 
+            (models.User.nik.ilike(f"%{search}%"))
+        )
+    if bansos:
+        query = query.filter(
+            (models.User.is_fakir == True) | 
+            (models.User.is_miskin == True) | 
+            (models.User.is_ibu_hamil == True) | 
+            (models.User.is_balita == True)
+        )
+    
+    # Specific Category Filters
+    if is_fakir:
+        query = query.filter(models.User.is_fakir == True)
+    if is_miskin:
+        query = query.filter(models.User.is_miskin == True)
+    if is_ibu_hamil:
+        query = query.filter(models.User.is_ibu_hamil == True)
+    if is_balita:
+        query = query.filter(models.User.is_balita == True)
     
     total = query.count()
     items = query.offset(skip).limit(limit).all()
@@ -61,12 +101,13 @@ def update_warga(warga_id: str, warga_update: WargaUpdate, db: Session = Depends
     if not db_user:
         raise HTTPException(status_code=404, detail="Warga tidak ditemukan")
 
-    # Access Control: Hanya diri sendiri, RW (untuk warganya), Lurah, atau Superadmin
+    # Access Control: Hanya diri sendiri, RT (untuk warganya), RW (untuk warganya), Lurah, atau Superadmin
     can_edit = (
         current_user.id == db_user.id or 
         current_user.role == 'superadmin' or 
         current_user.role == 'lurah' or
-        (current_user.role == 'rw' and current_user.rw == db_user.rw)
+        (current_user.role == 'rw' and current_user.rw == db_user.rw) or
+        (current_user.role == 'rt' and current_user.rt == db_user.rt and current_user.rw == db_user.rw)
     )
     
     if not can_edit:
@@ -74,6 +115,16 @@ def update_warga(warga_id: str, warga_update: WargaUpdate, db: Session = Depends
     
     update_data = warga_update.model_dump(exclude_unset=True)
     
+    # Restriksi Role: Lurah & RT boleh ganti role tertentu
+    if "role" in update_data:
+        if current_user.role == 'lurah':
+            if update_data["role"] not in ['warga', 'rt', 'rw', 'staff']:
+                raise HTTPException(status_code=403, detail="Lurah hanya diperbolehkan mengubah role menjadi warga, rt, rw, atau staff")
+        elif current_user.role == 'rt':
+            # RT boleh angkat jadi pengurus (role rt) atau kembalikan ke warga
+            if update_data["role"] not in ['warga', 'rt']:
+                raise HTTPException(status_code=403, detail="RT hanya diperbolehkan mengubah role menjadi warga atau rt (pengurus)")
+
     # If NIK is being updated, check if it's already taken by someone else
     if "nik" in update_data and update_data["nik"] != db_user.nik:
         existing_nik = db.query(models.User).filter(models.User.nik == update_data["nik"], models.User.id != warga_id).first()

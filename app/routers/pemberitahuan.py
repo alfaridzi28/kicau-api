@@ -4,50 +4,93 @@ from typing import List, Optional
 from app import database, models
 from app.core.security import get_current_user
 import datetime
+from sqlalchemy import or_
 
 router = APIRouter(prefix="/pemberitahuan", tags=["pemberitahuan"])
+
+def is_empty_or_none(col):
+    """Helper to check if a column is None or an empty string."""
+    return or_(col == None, col == '')
 
 @router.get("/publik")
 def get_pemberitahuan_publik(
     rt: Optional[str] = None,
     rw: Optional[str] = None,
-    lat: Optional[float] = None,
-    lng: Optional[float] = None,
     limit: int = 6,
     db: Session = Depends(database.get_db)
 ):
-    detected_rt = rt
-    detected_rw = rw
-    
-    if lat is not None and lng is not None and not (rt and rw):
-        from geoalchemy2.functions import ST_Distance, ST_SetSRID, ST_Point
-        point = ST_SetSRID(ST_Point(lng, lat), 4326)
-        nearest_user = db.query(models.User).filter(
-            models.User.rt != None, 
-            models.User.rw != None,
-            models.User.lokasi != None
-        ).order_by(ST_Distance(models.User.lokasi, point)).first()
-        
-        if nearest_user:
-            detected_rt = nearest_user.rt
-            detected_rw = nearest_user.rw
-
     query = db.query(models.Pemberitahuan).filter(models.Pemberitahuan.is_publik == True)
     
-    if detected_rt and detected_rw:
+    if rt and rw:
         query = query.filter(
-            ((models.Pemberitahuan.target_rt == detected_rt) & (models.Pemberitahuan.target_rw == detected_rw)) |
-            ((models.Pemberitahuan.target_rt == None) & (models.Pemberitahuan.target_rw == None))
+            or_(
+                # Admin/Lurah global news (None or empty string)
+                (is_empty_or_none(models.Pemberitahuan.target_rw)) & (is_empty_or_none(models.Pemberitahuan.target_rt)),
+                # RW specific news
+                (models.Pemberitahuan.target_rw == rw) & (is_empty_or_none(models.Pemberitahuan.target_rt)),
+                # RT specific news
+                (models.Pemberitahuan.target_rw == rw) & (models.Pemberitahuan.target_rt == rt)
+            )
         )
+    else:
+        # If no region detected, only show global news
+        query = query.filter((is_empty_or_none(models.Pemberitahuan.target_rw)) & (is_empty_or_none(models.Pemberitahuan.target_rt)))
     
     return {
-        "detected_region": {"rt": detected_rt, "rw": detected_rw} if detected_rt else None,
+        "detected_region": {"rt": rt, "rw": rw} if rt else None,
         "pemberitahuan": query.order_by(models.Pemberitahuan.created_at.desc()).limit(limit).all()
     }
 
 @router.get("/")
-def get_all_pemberitahuan(db: Session = Depends(database.get_db)):
-    return db.query(models.Pemberitahuan).order_by(models.Pemberitahuan.created_at.desc()).all()
+def get_all_pemberitahuan(
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    # Base query
+    query = db.query(models.Pemberitahuan)
+    
+    # VISIBILITY RULES based on Hierarchy:
+    if current_user.role in ["superadmin", "admin"]:
+        # Admin sees everything
+        pass
+    elif current_user.role == "lurah":
+        # Lurah sees Admin/Lurah global news + their own
+        query = query.filter(
+            or_(
+                (is_empty_or_none(models.Pemberitahuan.target_rw)) & (is_empty_or_none(models.Pemberitahuan.target_rt)),
+                (models.Pemberitahuan.created_by == current_user.id)
+            )
+        )
+    elif current_user.role == "rw":
+        # RW sees Admin/Lurah global news + news for their RW + their own
+        query = query.filter(
+            or_(
+                (is_empty_or_none(models.Pemberitahuan.target_rw)) & (is_empty_or_none(models.Pemberitahuan.target_rt)),
+                (models.Pemberitahuan.target_rw == current_user.rw) & (is_empty_or_none(models.Pemberitahuan.target_rt)),
+                (models.Pemberitahuan.created_by == current_user.id)
+            )
+        )
+    elif current_user.role == "rt":
+        # RT sees Admin/Lurah news + their RW news + news for their RT + their own
+        query = query.filter(
+            or_(
+                (is_empty_or_none(models.Pemberitahuan.target_rw)) & (is_empty_or_none(models.Pemberitahuan.target_rt)),
+                (models.Pemberitahuan.target_rw == current_user.rw) & (is_empty_or_none(models.Pemberitahuan.target_rt)),
+                (models.Pemberitahuan.target_rw == current_user.rw) & (models.Pemberitahuan.target_rt == current_user.rt),
+                (models.Pemberitahuan.created_by == current_user.id)
+            )
+        )
+    elif current_user.role == "warga":
+        # Warga sees Admin/Lurah news + their RW news + their RT news
+        query = query.filter(
+            or_(
+                (is_empty_or_none(models.Pemberitahuan.target_rw)) & (is_empty_or_none(models.Pemberitahuan.target_rt)),
+                (models.Pemberitahuan.target_rw == current_user.rw) & (is_empty_or_none(models.Pemberitahuan.target_rt)),
+                (models.Pemberitahuan.target_rw == current_user.rw) & (models.Pemberitahuan.target_rt == current_user.rt)
+            )
+        )
+        
+    return query.order_by(models.Pemberitahuan.created_at.desc()).all()
 
 @router.post("/")
 def create_pemberitahuan(
@@ -55,16 +98,26 @@ def create_pemberitahuan(
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    # Map frontend fields to DB fields if necessary
     payload = {
         "judul": data.get("judul"),
         "isi": data.get("isi"),
-        "target_rt": data.get("target_rt") or data.get("rt"),
-        "target_rw": data.get("target_rw") or data.get("rw"),
         "is_publik": data.get("is_publik", True),
-        "created_by": current_user.id
+        "created_by": current_user.id,
+        "target_rt": None,
+        "target_rw": None
     }
     
+    # Handle empty strings from frontend as None for DB consistency
+    if current_user.role == "rt":
+        payload["target_rt"] = current_user.rt
+        payload["target_rw"] = current_user.rw
+    elif current_user.role == "rw":
+        payload["target_rw"] = current_user.rw
+        payload["target_rt"] = None
+    elif current_user.role in ["lurah", "admin", "superadmin", "staff"]:
+        payload["target_rt"] = None
+        payload["target_rw"] = None
+
     new_p = models.Pemberitahuan(**payload)
     db.add(new_p)
     db.commit()
@@ -81,9 +134,8 @@ def delete_pemberitahuan(
     if not news:
         raise HTTPException(status_code=404, detail="Pengumuman tidak ditemukan")
     
-    # Only creator or Superadmin/Lurah can delete
-    if news.created_by != current_user.id and current_user.role not in ['superadmin', 'lurah']:
-        raise HTTPException(status_code=403, detail="Tidak memiliki akses untuk menghapus")
+    if news.created_by != current_user.id and current_user.role not in ["superadmin", "lurah"]:
+        raise HTTPException(status_code=403, detail="Akses ditolak")
         
     db.delete(news)
     db.commit()
