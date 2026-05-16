@@ -72,6 +72,7 @@ class SuratPengantar(Base):
     keterangan = Column(Text, nullable=True)
     status = Column(String(50), default="pending")  # pending, approved, rejected
     user_id = Column(String(36), ForeignKey('users.id'))
+    user = relationship('User', foreign_keys=[user_id])
     rt_id = Column(String(36), ForeignKey('users.id'), nullable=True)
     file_ttd_digital = Column(Text, nullable=True)  # Base64 PNG tanda tangan
     catatan = Column(Text, nullable=True)
@@ -89,6 +90,7 @@ class Aduan(Base):
     latitude = Column(Float, nullable=True)               # Lokasi kejadian
     longitude = Column(Float, nullable=True)
     user_id = Column(String(36), ForeignKey('users.id'))
+    user = relationship('User', foreign_keys=[user_id])
     rt_id = Column(String(36), ForeignKey('users.id'), nullable=True)
     balasan = Column(Text, nullable=True)
     created_at = Column(TIMESTAMP, default=datetime.datetime.utcnow)
@@ -130,6 +132,7 @@ class Aset(Base):
     status = Column(String(50), default="tersedia")     # tersedia, dipinjam, tidak_layak
     kepemilikan = Column(String(50), nullable=False)    # aset_rw, aset_rt
     pemilik_id = Column(String(36), ForeignKey('users.id'))
+    pemilik = relationship('User', foreign_keys=[pemilik_id])
     rt = Column(String(10), nullable=True)
     rw = Column(String(10), nullable=True)
     created_at = Column(TIMESTAMP, default=datetime.datetime.utcnow)
@@ -141,6 +144,7 @@ class PeminjamanAset(Base):
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     aset_id = Column(String(36), ForeignKey('aset.id'), nullable=False)
     peminjam_id = Column(String(36), ForeignKey('users.id'), nullable=False)
+    peminjam = relationship('User', foreign_keys=[peminjam_id])
     disetujui_oleh = Column(String(36), ForeignKey('users.id'), nullable=True)
     status = Column(String(50), default="menunggu")     # menunggu, disetujui, ditolak, dikembalikan
     keperluan = Column(Text, nullable=True)
@@ -149,3 +153,4 @@ class PeminjamanAset(Base):
     tanggal_kembali_aktual = Column(TIMESTAMP, nullable=True)
     catatan = Column(Text, nullable=True)
     created_at = Column(TIMESTAMP, default=datetime.datetime.utcnow)
+
